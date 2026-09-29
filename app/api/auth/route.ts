@@ -55,7 +55,14 @@ export async function POST(request: Request) {
           template_params: { to_email: email, code, expires_minutes: "10" },
         }),
       });
-      if (!response.ok) throw new Error(`EmailJS ${response.status}`);
+      if (!response.ok) {
+        const reason = (await response.text()).slice(0, 500)
+          .replaceAll(email, "[email]")
+          .replaceAll(code, "[code]")
+          .replaceAll(env.EMAILJS_PUBLIC_KEY, "[public key]")
+          .replaceAll(env.EMAILJS_PRIVATE_KEY, "[private key]");
+        throw new Error(`EmailJS ${response.status}: ${reason}`);
+      }
       return Response.json({ ok: true }, { headers: noStore });
     } catch (error) {
       console.error("Falha no envio do código:", error);
