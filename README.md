@@ -34,7 +34,7 @@ Depois de configurar o banco e o segredo:
 pnpm run deploy
 ```
 
-O endereço publicado é [cinecar.cinecar.workers.dev](https://cinecar.cinecar.workers.dev/). Verifique a página inicial, o painel e a criação de uma sessão de teste.
+O endereço publicado é [cinecar.cinecar.workers.dev](https://cinecar.cinecar.workers.dev/). A página inicial e a API de sessões foram verificadas após a primeira publicação; ainda é preciso testar o painel com a senha escolhida pelo host.
 
 ## Repositório GitHub
 
