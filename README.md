@@ -4,8 +4,8 @@ Esta é uma cópia independente do CineCar, pronta para uma conta própria do Gi
 
 ## Antes de publicar
 
-- Crie as contas no [GitHub](https://github.com/signup) e [Cloudflare](https://dash.cloudflare.com/sign-up).
-- Instale Node.js 22 ou superior. Ative pnpm com `corepack enable` e `corepack prepare pnpm@11.25.0 --activate`.
+- Entre nas contas [GitHub](https://github.com/LunaVexy/cinecar) e [Cloudflare](https://dash.cloudflare.com/).
+- Para desenvolver localmente, instale Node.js 22 ou superior e pnpm 11.25.0.
 - Extraia a pasta, abra um terminal nela e execute `pnpm install`.
 
 ## Banco gratuito D1
@@ -34,24 +34,13 @@ Depois de configurar o banco e o segredo:
 pnpm run deploy
 ```
 
-O Wrangler mostrará o endereço `*.workers.dev`. Essa publicação usa o mesmo código do repositório. Verifique a página inicial, o painel e a criação de uma sessão de teste.
+O endereço publicado é [cinecar.cinecar.workers.dev](https://cinecar.cinecar.workers.dev/). Verifique a página inicial, o painel e a criação de uma sessão de teste.
 
-## Colocar no seu GitHub
+## Repositório GitHub
 
-Crie um repositório **privado** e vazio chamado `cinecar` na nova conta GitHub. Não marque as opções de README, `.gitignore` ou licença na criação. Dentro da pasta do projeto:
+O código está em [LunaVexy/cinecar](https://github.com/LunaVexy/cinecar), na branch `main`. Para continuar no seu computador, clone esse repositório pelo GitHub Desktop ou com `git clone https://github.com/LunaVexy/cinecar.git`. Não precisa publicar o ZIP por cima do repositório.
 
-```bash
-git init
-git add .
-git commit -m "CineCar inicial"
-git branch -M main
-git remote add origin https://github.com/LunaVexy/cinecar.git
-git push -u origin main
-```
-
-O repositório `LunaVexy/cinecar` já foi criado. Para não usar comandos Git, abra a pasta no GitHub Desktop, publique no repositório privado existente e selecione a nova conta.
-
-No painel do Cloudflare, abra o Worker `cinecar` e conecte o repositório em **Settings → Builds → Connect**. Configure o comando de build como `pnpm build` e o de deploy como `pnpm exec wrangler deploy --config dist/server/wrangler.json`. Se a tela pedir o comando de instalação, use `corepack enable && pnpm install --frozen-lockfile`. As próximas alterações enviadas à branch `main` poderão ser publicadas automaticamente.
+No painel do Cloudflare, abra o Worker `cinecar` e conecte o repositório em **Settings → Builds → Connect**. Configure a branch de produção `main`, o comando de build `pnpm build` e o comando de deploy `pnpm exec wrangler deploy --config dist/server/wrangler.json`. Se a tela pedir o comando de instalação, use `corepack enable && pnpm install --frozen-lockfile`. As próximas alterações enviadas à branch `main` poderão ser publicadas automaticamente.
 
 ## Para futuras alterações
 
