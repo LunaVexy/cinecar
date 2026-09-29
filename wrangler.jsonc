@@ -1,0 +1,15 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "cinecar",
+  "main": "vinext/server/fetch-handler",
+  "compatibility_date": "2026-09-29",
+  "compatibility_flags": ["nodejs_compat"],
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "cinecar-db",
+      "database_id": "b717facd-cc0b-48a7-98eb-61494deb6ad3",
+      "migrations_dir": "drizzle"
+    }
+  ]
+}
