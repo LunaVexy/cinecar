@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ArrowLeft, ArrowRight, CalendarDays, Check, CloudRain, ExternalLink, Film, LoaderCircle, MapPin, MoonStar, Popcorn, RefreshCw, Share2, Sparkles, Star, Ticket, Users, KeyRound } from "lucide-react";
+import { ArrowLeft, ArrowRight, CalendarDays, Check, CloudRain, ExternalLink, Film, LoaderCircle, LogOut, MapPin, MoonStar, Popcorn, RefreshCw, Share2, Sparkles, Star, Ticket, Users, KeyRound } from "lucide-react";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
@@ -12,6 +12,7 @@ type Day = { date: string; rain: number; chance: number | null; historic: boolea
 type Vote = { voterId: string; name: string; avatar: string | null; filmId: string; ticketId: string | null };
 type Board = { started: boolean; films: FilmOption[]; session?: { id: string; city: string | null; selectedDate: string | null; driveFileId: string | null; driveResourceKey: string | null }; votes: Vote[]; tally: { filmId: string; total: number }[]; totalVotes: number; finished: boolean; winner: string | null };
 type Place = { name: string; admin1?: string; country?: string; latitude: number; longitude: number };
+type Identity = { email: string; voterId: string };
 
 const tickets = [
   { id:"cobertor", title:"Poltrona & petiscos", bring:"Sanduíches para dividir + uma cobertinha macia", note:"Lanche salgado e aconchego no banco de trás", emoji:"🥪", code:"CC-01" },
@@ -26,11 +27,11 @@ function Avatar({id,small=false}:{id:string|null|undefined;small?:boolean}) { re
 const dateText = (value:string, options?:Intl.DateTimeFormatOptions) => new Date(value+"T12:00:00").toLocaleDateString("pt-BR", options || {weekday:"short", day:"2-digit", month:"long"});
 const dateISO = (date:Date) => [date.getFullYear(),String(date.getMonth()+1).padStart(2,"0"),String(date.getDate()).padStart(2,"0")].join("-");
 const shiftDate = (date:Date, amount:number) => { const copy=new Date(date.getFullYear(),date.getMonth(),date.getDate()); copy.setDate(copy.getDate()+amount); return copy; };
-const makeId = () => typeof crypto !== "undefined" && crypto.randomUUID ? crypto.randomUUID() : "cc-"+Math.random().toString(36).slice(2)+Date.now().toString(36);
-
 export default function Home() {
   const autoWeather=useRef(false);
   const [sessionId,setSessionId]=useState("cinecar"),[voterId,setVoterId]=useState(""),[email,setEmail]=useState(""),[avatar,setAvatar]=useState("");
+  const [identity,setIdentity]=useState<Identity|null>(null),[code,setCode]=useState(""),[codeSentAt,setCodeSentAt]=useState(0);
+  const [clock,setClock]=useState(Date.now());
   const [popcorn,setPopcorn]=useState<{id:number;x:number;y:number}[]>([]);
   const [board,setBoard]=useState<Board|null>(null),[screen,setScreen]=useState("loading");
   const [city,setCity]=useState("Pelotas"),[place,setPlace]=useState<Place|null>(null),[days,setDays]=useState<Day[]>([]);
@@ -41,11 +42,21 @@ export default function Home() {
   const sync=useCallback(async(id:string)=>{const response=await fetch("/api/session?id="+encodeURIComponent(id),{cache:"no-store"});const data=await response.json() as Board & {error?:string};if(!response.ok)throw new Error(data.error||"Não foi possível abrir a sessão.");setBoard(data);if(!data.started)setScreen("idle");return data;},[]);
   useEffect(()=>{
     const id=new URLSearchParams(location.search).get("sessao")||"cinecar";setSessionId(id);
-    let person=localStorage.getItem("cinecar:voter:"+id);if(!person){person=makeId();localStorage.setItem("cinecar:voter:"+id,person);}
-    setVoterId(person);const savedEmail=localStorage.getItem("cinecar:email:"+id)||"",savedAvatar=localStorage.getItem("cinecar:avatar:"+id)||"";setEmail(savedEmail);setAvatar(savedAvatar);
-    sync(id).then((data)=>{if(!data.started){setScreen("idle");return;}if(data.session?.city)setCity(data.session.city);if(!data.session?.selectedDate)setScreen(savedEmail&&savedAvatar?"date":"welcome");else if(data.finished)setScreen(savedEmail&&savedAvatar?"result":"welcome");else {const own=data.votes.find((v)=>v.voterId===person);setScreen(savedEmail&&savedAvatar?(own?.ticketId?"waiting":own?"ticket":"movies"):"welcome");}}).catch((e)=>{setMessage(e instanceof Error?e.message:"A sessão não carregou.");setScreen("welcome");});
+    const savedAvatar=localStorage.getItem("cinecar:avatar:"+id)||"";
+    Promise.all([fetch("/api/auth",{cache:"no-store"}).then(r=>r.ok?r.json() as Promise<Identity>:null).catch(()=>null),sync(id)])
+      .then(([person,data])=>{if(!data.started){setScreen("idle");return;}if(data.session?.city)setCity(data.session.city);
+        if(person){setIdentity(person);setEmail(person.email);setVoterId(person.voterId);}
+        const own=data.votes.find(v=>v.voterId===person?.voterId);
+        const chosenAvatar=own?.avatar||savedAvatar;
+        if(chosenAvatar)setAvatar(chosenAvatar);
+        if(!person||!chosenAvatar)setScreen("welcome");
+        else if(!data.session?.selectedDate)setScreen("date");
+        else if(data.finished)setScreen("result");
+        else setScreen(own?.ticketId?"waiting":own?"ticket":"movies");
+      }).catch((e)=>{setMessage(e instanceof Error?e.message:"A sessão não carregou.");setScreen("welcome");});
   },[sync]);
   const films=board?.films||[];
+  useEffect(()=>{if(screen!=="verify")return;const timer=setInterval(()=>setClock(Date.now()),1000);return()=>clearInterval(timer);},[screen]);
   useEffect(()=>{
     const titles=[...new Set((board?.films||[]).map((f)=>f.wiki).filter(Boolean))].join("|");
     if(!titles)return;
@@ -79,20 +90,30 @@ export default function Home() {
 
   async function post(action:Record<string,unknown>){const response=await fetch("/api/session",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({...action,sessionId})});const data=await response.json() as {error?:string};if(!response.ok)throw new Error(data.error||"Não foi possível guardar sua escolha.");return data;}
   async function selectDate(day:Day){if(!place)return;setBusy(true);setMessage("");try{await post({action:"set-date",date:day.date,city:[place.name,place.admin1].filter(Boolean).join(", "),latitude:place.latitude,longitude:place.longitude});const data=await sync(sessionId);setScreen(data.finished?"result":"movies");}catch(e){const data=await sync(sessionId).catch(()=>null);if(data?.session?.selectedDate)setScreen(data.finished?"result":"movies");else setMessage(e instanceof Error?e.message:"A data não foi salva.");}finally{setBusy(false);}}
-  async function submitVote(){if(!email||!avatar){setScreen("welcome");return;}if(!filmId){setMessage("Escolha um filme para registrar seu voto.");return;}setBusy(true);setMessage("");try{await post({action:"vote",voterId,email,avatar,filmId});await sync(sessionId);setScreen("ticket");}catch(e){const data=await sync(sessionId).catch(()=>null);if(data?.finished)setScreen("result");else setMessage(e instanceof Error?e.message:"O voto não foi registrado.");}finally{setBusy(false);}}
+  async function submitVote(){if(!identity||!avatar){setScreen("welcome");return;}if(!filmId){setMessage("Escolha um filme para registrar seu voto.");return;}setBusy(true);setMessage("");try{await post({action:"vote",avatar,filmId});await sync(sessionId);setScreen("ticket");}catch(e){const data=await sync(sessionId).catch(()=>null);if(data?.finished)setScreen("result");else setMessage(e instanceof Error?e.message:"O voto não foi registrado.");}finally{setBusy(false);}}
   async function submitTicket(){if(!ticketId){setMessage("Escolha um ingresso para continuar.");return;}setBusy(true);setMessage("");try{await post({action:"ticket",voterId,ticketId});const data=await sync(sessionId);setScreen(data.finished?"result":"waiting");}catch(e){setMessage(e instanceof Error?e.message:"O ingresso não foi salvo.");}finally{setBusy(false);}}
   useEffect(()=>{if(screen!=="waiting")return;const timer=setInterval(()=>sync(sessionId).then(data=>{if(data.finished)setScreen("result");}).catch(()=>{}),4500);return()=>clearInterval(timer);},[screen,sessionId,sync]);
 
-  function enter(){
+  function afterLogin(person:Identity){
+    setIdentity(person);setEmail(person.email);setVoterId(person.voterId);
+    localStorage.setItem("cinecar:avatar:"+sessionId,avatar);setMessage("");
+    const own=board?.votes.find(v=>v.voterId===person.voterId);
+    setScreen(!board?.session?.selectedDate?"date":board.finished?"result":own?.ticketId?"waiting":own?"ticket":"movies");
+  }
+  async function enter(){
     const normalized=email.trim().toLowerCase();
     if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalized)){setMessage("Digite um e-mail válido para continuar.");return;}
     if(!avatar){setMessage("Escolha seu personagem.");return;}
-    const taken=!board?.finished&&board?.votes.some(v=>v.avatar===avatar&&v.voterId!==voterId);
+    const taken=!board?.finished&&board?.votes.some(v=>v.avatar===avatar&&v.voterId!==identity?.voterId);
     if(taken){setMessage("Este personagem já votou nesta sessão. Escolha outro.");return;}
-    setEmail(normalized);localStorage.setItem("cinecar:email:"+sessionId,normalized);localStorage.setItem("cinecar:avatar:"+sessionId,avatar);setMessage("");
-    const own=board?.votes.find(v=>v.voterId===voterId);
-    setScreen(!board?.session?.selectedDate?"date":board.finished?"result":own?.ticketId?"waiting":own?"ticket":"movies");
+    if(identity?.email===normalized){afterLogin(identity);return;}
+    setBusy(true);setMessage("");
+    try{const response=await fetch("/api/auth",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({action:"send",email:normalized})});const data=await response.json() as {error?:string};if(!response.ok)throw new Error(data.error||"Não foi possível enviar o código.");setEmail(normalized);setCode("");setCodeSentAt(Date.now());setScreen("verify");}
+    catch(e){setMessage(e instanceof Error?e.message:"Não foi possível enviar o código.");}finally{setBusy(false);}
   }
+  async function verify(){setBusy(true);setMessage("");try{const response=await fetch("/api/auth",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({action:"verify",email,code})});const data=await response.json() as Identity & {error?:string};if(!response.ok)throw new Error(data.error||"Código incorreto.");afterLogin(data);}catch(e){setMessage(e instanceof Error?e.message:"Código incorreto.");}finally{setBusy(false);}}
+  async function resend(){if(Date.now()-codeSentAt<60000)return;setBusy(true);setMessage("");try{const response=await fetch("/api/auth",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({action:"send",email})});const data=await response.json() as {error?:string};if(!response.ok)throw new Error(data.error||"Não foi possível reenviar.");setCodeSentAt(Date.now());setCode("");setMessage("Enviamos um novo código para seu e-mail.");}catch(e){setMessage(e instanceof Error?e.message:"Não foi possível reenviar.");}finally{setBusy(false);}}
+  async function logout(){setBusy(true);try{await fetch("/api/auth",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({action:"logout"})});setIdentity(null);setVoterId("");setEmail("");setAvatar("");setCode("");localStorage.removeItem("cinecar:avatar:"+sessionId);setMessage("");setScreen(board?.started?"welcome":"idle");}catch{setMessage("Não foi possível sair. Tente novamente.");}finally{setBusy(false);}}
   function burst(event:React.MouseEvent<HTMLElement>){
     if(!(event.target as HTMLElement).closest("button,a,label.ticket-option"))return;
     const id=Date.now()+Math.random();setPopcorn(items=>[...items.slice(-4),{id,x:event.clientX,y:event.clientY}]);
@@ -101,7 +122,7 @@ export default function Home() {
   async function invite(){const activeId=board?.session?.id||sessionId;const url=location.origin+location.pathname+(activeId==="cinecar"?"":"?sessao="+encodeURIComponent(activeId));try{await navigator.clipboard.writeText(url);setShare("Convite copiado! Mande no grupo.");}catch{setShare(url);}setTimeout(()=>setShare(""),3200);}
   useEffect(()=>{
     const context=(document as Document & {modelContext?:{registerTool?:(tool:unknown,options?:{signal?:AbortSignal})=>unknown}}).modelContext;
-    if(!context?.registerTool||!voterId)return;
+    if(!context?.registerTool||!identity)return;
     const controller=new AbortController();
     const register=async()=>{
       await context.registerTool?.({
@@ -116,9 +137,9 @@ export default function Home() {
         name:"cinecar_vote_for_movie",
         title:"Votar em um filme",
         description:"Registra o voto de uma pessoa em um dos filmes disponíveis e abre a etapa de ingresso.",
-        inputSchema:{type:"object",properties:{email:{type:"string"},avatar:{type:"string",enum:characters.map(c=>c.id)},filmId:{type:"string",enum:films.map(f=>f.id)}},required:["email","avatar","filmId"],additionalProperties:false},
+        inputSchema:{type:"object",properties:{avatar:{type:"string",enum:characters.map(c=>c.id)},filmId:{type:"string",enum:films.map(f=>f.id)}},required:["avatar","filmId"],additionalProperties:false},
         annotations:{readOnlyHint:false,untrustedContentHint:false},
-        async execute(input:unknown){const data=input as {email:string;avatar:string;filmId:string};await post({action:"vote",voterId,email:data.email,avatar:data.avatar,filmId:data.filmId});setEmail(data.email);setAvatar(data.avatar);setFilmId(data.filmId);setScreen("ticket");await sync(sessionId);return {ok:true,next:"ticket"};}
+        async execute(input:unknown){const data=input as {avatar:string;filmId:string};await post({action:"vote",avatar:data.avatar,filmId:data.filmId});setAvatar(data.avatar);setFilmId(data.filmId);setScreen("ticket");await sync(sessionId);return {ok:true,next:"ticket"};}
       },{signal:controller.signal});
       await context.registerTool?.({
         name:"cinecar_choose_ticket",
@@ -131,20 +152,22 @@ export default function Home() {
     };
     void register().catch(()=>{});
     return ()=>controller.abort();
-  },[voterId,sessionId]);
+  },[identity,sessionId]);
   useEffect(()=>{if(["loading","idle","waiting"].includes(screen))return;const timer=setInterval(()=>{void sync(sessionId).catch(()=>{});},9000);return()=>clearInterval(timer);},[screen,sessionId,sync]);
   useEffect(()=>{if(screen!=="idle"||sessionId!=="cinecar")return;const timer=setInterval(()=>sync(sessionId).then(data=>{if(data.started)setScreen("welcome");}).catch(()=>{}),6000);return()=>clearInterval(timer);},[screen,sessionId,sync]);
   const step=screen==="date"?1:screen==="movies"?2:screen==="ticket"?3:4;
 
   return <main className={"shell"+(screen==="result"?" result-shell":"")} onClickCapture={burst}><div className="rain" aria-hidden="true">{Array.from({length:44},(_,i)=><i key={i} style={{left:(i*37.7)%100+"%",animationDelay:(i%11)*-.21+"s",animationDuration:1.1+(i%5)*.24+"s"}} />)}</div>
     <div className="popcorn-layer" aria-hidden="true">{popcorn.map(p=><span key={p.id} style={{left:p.x,top:p.y}}>{[0,1,2,3,4,5].map(i=><i key={i} style={{"--angle":i*60+"deg"} as React.CSSProperties}>🍿</i>)}</span>)}</div>
-    <header className="topbar"><a className="logo" href="/"><span className="logo-icon"><Film size={19}/></span><span className="brand-name">Cine<span>Car</span></span></a><div className="top-actions"><span className="session-label"><i/> {avatar?characters.find(c=>c.id===avatar)?.name:"sessão entre amigos"}</span><a className="admin-entry" href="/admin" aria-label="Painel de programação"><KeyRound size={16}/><span>Painel</span></a>{board?.started&&<button className="outline-button" onClick={invite}><Share2 size={16}/> Convide o grupo</button>}</div></header>
+    <header className="topbar"><a className="logo" href="/"><span className="logo-icon"><Film size={19}/></span><span className="brand-name">Cine<span>Car</span></span></a><div className="top-actions"><span className="session-label"><i/> {avatar?characters.find(c=>c.id===avatar)?.name:"sessão entre amigos"}</span><a className="admin-entry" href="/admin" aria-label="Painel de programação"><KeyRound size={16}/><span>Painel</span></a>{identity&&<button className="admin-entry" onClick={()=>void logout()} disabled={busy} aria-label="Sair e trocar e-mail"><LogOut size={16}/><span>Sair</span></button>}{board?.started&&<button className="outline-button" onClick={invite}><Share2 size={16}/> Convide o grupo</button>}</div></header>
 
     {screen==="loading"&&<div className="loading"><LoaderCircle className="spin" size={30}/> Abrindo a sessão…</div>}
 
     {screen==="idle"&&<section className="content idle-screen"><div className="idle-copy"><div className="eyebrow"><Film size={16}/> CINECAR · EM BREVE</div><h1>A sessão ainda<br/><em>não começou.</em></h1><p className="lead">Estamos escolhendo os filmes em cartaz. Volte daqui a pouco para marcar a data e votar com o grupo.</p><div className="idle-status"><span className="idle-pulse"/> Aguardando a programação</div></div><img src="/car-rain.png" alt="Carro e tablet aguardando a próxima sessão"/></section>}
 
-    {screen==="welcome"&&<section className="content welcome"><div className="welcome-copy"><div className="eyebrow"><Sparkles size={15}/> SUA SESSÃO COMEÇA AQUI</div><h1>Escolha seu lugar<br/><em>no CineCar.</em></h1><p className="lead">Um e-mail e um personagem para saber quem escolheu cada filme. Depois é só pegar seu ingresso.</p><img className="welcome-car" src="/car-rain.png" alt="Carro sob a chuva com tablet iluminado"/></div><div className="welcome-card"><span className="card-kicker">01 / ENTRADA</span><h2>Quem chegou?</h2><label className="email-field">Seu e-mail<input type="email" autoComplete="email" value={email} onChange={e=>setEmail(e.target.value)} onKeyDown={e=>{if(e.key==="Enter")enter();}} placeholder="voce@exemplo.com"/></label><p>Escolha seu personagem</p><div className="character-grid">{characters.map(c=><button type="button" key={c.id} disabled={!board?.finished&&board?.votes.some(v=>v.avatar===c.id&&v.voterId!==voterId)} className={"character"+(avatar===c.id?" chosen":"")} onClick={()=>{setAvatar(c.id);setMessage("");}}><Avatar id={c.id}/><strong>{c.name}</strong></button>)}</div>{message&&<p className="error">{message}</p>}<button className="primary-button enter-button" onClick={enter}>Entrar na sessão <ArrowRight size={17}/></button><small className="privacy-note">O e-mail identifica seu voto nesta sessão. Ele não é verificado por mensagem.</small></div></section>}
+    {screen==="welcome"&&<section className="content welcome"><div className="welcome-copy"><div className="eyebrow"><Sparkles size={15}/> SUA SESSÃO COMEÇA AQUI</div><h1>Escolha seu lugar<br/><em>no CineCar.</em></h1><p className="lead">Um e-mail e um personagem para saber quem escolheu cada filme. Depois é só pegar seu ingresso.</p><img className="welcome-car" src="/car-rain.png" alt="Carro sob a chuva com tablet iluminado"/></div><div className="welcome-card"><span className="card-kicker">01 / ENTRADA</span><h2>Quem chegou?</h2><label className="email-field">Seu e-mail<input type="email" autoComplete="email" value={email} onChange={e=>setEmail(e.target.value)} onKeyDown={e=>{if(e.key==="Enter")void enter();}} placeholder="voce@exemplo.com"/></label><p>Escolha seu personagem</p><div className="character-grid">{characters.map(c=><button type="button" key={c.id} disabled={!board?.finished&&board?.votes.some(v=>v.avatar===c.id&&v.voterId!==voterId)} className={"character"+(avatar===c.id?" chosen":"")} onClick={()=>{setAvatar(c.id);setMessage("");}}><Avatar id={c.id}/><strong>{c.name}</strong></button>)}</div>{message&&<p className="error">{message}</p>}<button className="primary-button enter-button" disabled={busy} onClick={()=>void enter()}>{busy?<LoaderCircle className="spin" size={17}/>:<ArrowRight size={17}/>} {identity?.email===email.trim().toLowerCase()?"Entrar na sessão":"Enviar código por e-mail"}</button><small className="privacy-note">Enviaremos um código de seis números para confirmar que o e-mail é seu.</small></div></section>}
+
+    {screen==="verify"&&<section className="content welcome"><div className="welcome-copy"><div className="eyebrow"><KeyRound size={15}/> CONFIRME SUA ENTRADA</div><h1>Seu lugar está<br/><em>quase reservado.</em></h1><p className="lead">Confira a caixa de entrada e o spam. O código vale por dez minutos.</p><img className="welcome-car" src="/car-rain.png" alt="Carro sob a chuva com tablet iluminado"/></div><div className="welcome-card verify-card"><span className="card-kicker">02 / VERIFICAÇÃO</span><h2>Confira seu e-mail</h2><p>Enviamos o código para <strong>{email}</strong>.</p><label className="email-field">Código de seis números<input type="text" inputMode="numeric" autoComplete="one-time-code" maxLength={6} pattern="[0-9]{6}" value={code} onChange={e=>setCode(e.target.value.replace(/\D/g,"").slice(0,6))} onKeyDown={e=>{if(e.key==="Enter")void verify();}} placeholder="000000"/></label>{message&&<p className="error" role="status">{message}</p>}<button className="primary-button enter-button" disabled={busy||code.length!==6} onClick={()=>void verify()}>{busy?<LoaderCircle className="spin" size={17}/>:<Check size={17}/>} Confirmar código</button><div className="verify-actions"><button type="button" disabled={busy||clock-codeSentAt<60000} onClick={()=>void resend()}>{clock-codeSentAt<60000?`Reenviar em ${Math.ceil((60000-(clock-codeSentAt))/1000)}s`:"Reenviar código"}</button><button type="button" onClick={()=>{setMessage("");setScreen("welcome");}}>Trocar e-mail</button></div><small className="privacy-note">O código é de uso único. Não compartilhe com outras pessoas.</small></div></section>}
 
     {screen==="date"&&<section className="content">
       <Steps step={step}/>

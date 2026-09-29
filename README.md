@@ -26,6 +26,28 @@ pnpm exec wrangler secret put CINECAR_ADMIN_PIN --name cinecar
 
 O comando pergunta a senha sem gravá-la no código. Use uma senha nova na migração; a anterior foi compartilhada na conversa e pode ser trocada agora.
 
+## Verificação de e-mail (preparação)
+
+O novo fluxo pede um código de seis números antes de permitir data, voto e ingresso. O código expira em dez minutos, admite cinco tentativas e o login verificado fica ativo por 30 dias no mesmo navegador. O servidor usa a identidade verificada para registrar o voto, mesmo que alguém altere os dados enviados pelo navegador.
+
+Para ativá-lo, crie uma conta gratuita em [EmailJS](https://dashboard.emailjs.com/sign-up), conecte uma conta de e-mail sua em **Email Services** e crie um template em **Email Templates**:
+
+- **To Email:** `{{to_email}}`
+- **Subject:** `Seu código para entrar no CineCar`
+- **Content:** `Seu código é {{code}}. Ele vale por {{expires_minutes}} minutos. Se você não solicitou, ignore esta mensagem.`
+
+Na página **Account → Security**, habilite a exigência de **Private Key** para envios. Anote Service ID, Template ID, Public Key e Private Key. No PowerShell, dentro de uma cópia atualizada deste repositório, execute `pnpm install` e então:
+
+```powershell
+pnpm run db:migrate
+pnpm exec wrangler secret put EMAILJS_SERVICE_ID --name cinecar
+pnpm exec wrangler secret put EMAILJS_TEMPLATE_ID --name cinecar
+pnpm exec wrangler secret put EMAILJS_PUBLIC_KEY --name cinecar
+pnpm exec wrangler secret put EMAILJS_PRIVATE_KEY --name cinecar
+```
+
+Cada comando pergunta o valor correspondente sem gravá-lo no GitHub. O projeto deve ser publicado **depois** da migração e dos quatro segredos. Teste com seu e-mail antes de compartilhar o site com o grupo. EmailJS tem limite gratuito mensal e usa a conta de e-mail que você conectar para enviar as mensagens.
+
 ## Primeira publicação
 
 Depois de configurar o banco e o segredo:
@@ -34,7 +56,7 @@ Depois de configurar o banco e o segredo:
 pnpm run deploy
 ```
 
-O endereço publicado é [cinecar.cinecar.workers.dev](https://cinecar.cinecar.workers.dev/). A página inicial e a API de sessões foram verificadas após a primeira publicação; ainda é preciso testar o painel com a senha escolhida pelo host.
+O endereço publicado é [cinecar.cinecar.workers.dev](https://cinecar.cinecar.workers.dev/). Verifique a página inicial, o painel e a criação de uma sessão de teste.
 
 ## Repositório GitHub
 
