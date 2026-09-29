@@ -40,7 +40,7 @@ O endereço publicado é [cinecar.cinecar.workers.dev](https://cinecar.cinecar.w
 
 O código está em [LunaVexy/cinecar](https://github.com/LunaVexy/cinecar), na branch `main`. Para continuar no seu computador, clone esse repositório pelo GitHub Desktop ou com `git clone https://github.com/LunaVexy/cinecar.git`. Não precisa publicar o ZIP por cima do repositório.
 
-No painel do Cloudflare, abra o Worker `cinecar` e conecte o repositório em **Settings → Builds → Connect**. Configure a branch de produção `main`, o comando de build `pnpm build` e o comando de deploy `pnpm exec wrangler deploy --config dist/server/wrangler.json`. Se a tela pedir o comando de instalação, use `corepack enable && pnpm install --frozen-lockfile`. As próximas alterações enviadas à branch `main` poderão ser publicadas automaticamente.
+No painel do Cloudflare, abra o Worker `cinecar` e conecte o repositório em **Settings → Builds → Connect**. Configure a branch de produção `main`, o comando de build `pnpm build` e o comando de deploy `pnpm exec wrangler deploy --config dist/server/wrangler.json`. Adicione a variável de build `PNPM_VERSION=11.25.0`, que corresponde à versão do projeto. Deixe a instalação automática de dependências habilitada. As próximas alterações enviadas à branch `main` poderão ser publicadas automaticamente.
 
 ## Para futuras alterações
 
