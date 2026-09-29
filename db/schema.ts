@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { integer, real, sqliteTable, text, uniqueIndex } from "drizzle-orm/sqlite-core";
+import { index, integer, real, sqliteTable, text, uniqueIndex } from "drizzle-orm/sqlite-core";
 
 export const sessions = sqliteTable("sessions", {
   id: text("id").primaryKey(),
@@ -73,3 +73,26 @@ export const adminAttempts = sqliteTable("admin_attempts", {
   count: integer("count").notNull(),
   resetAt: integer("reset_at").notNull(),
 });
+
+export const emailLoginCodes = sqliteTable("email_login_codes", {
+  email: text("email").primaryKey(),
+  salt: text("salt").notNull(),
+  codeHash: text("code_hash").notNull(),
+  expiresAt: integer("expires_at").notNull(),
+  sentAt: integer("sent_at").notNull(),
+  attempts: integer("attempts").notNull().default(0),
+  windowStart: integer("window_start").notNull(),
+  sendCount: integer("send_count").notNull().default(1),
+});
+
+export const emailLoginLimits = sqliteTable("email_login_limits", {
+  ipHash: text("ip_hash").primaryKey(),
+  windowStart: integer("window_start").notNull(),
+  sendCount: integer("send_count").notNull(),
+});
+
+export const emailLoginSessions = sqliteTable("email_login_sessions", {
+  tokenHash: text("token_hash").primaryKey(),
+  email: text("email").notNull(),
+  expiresAt: integer("expires_at").notNull(),
+}, table => [index("idx_email_login_sessions_expires").on(table.expiresAt)]);

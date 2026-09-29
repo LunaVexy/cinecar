@@ -1,4 +1,5 @@
 import { env } from "cloudflare:workers";
+import { getVoterIdentity } from "@/lib/email-auth";
 
 const TICKETS = new Set(["cobertor", "pipoca"]);
 const AVATARS: Record<string, string> = { matheus: "Matheus", hugo: "Hugo", andrey: "Andrey" };
@@ -62,6 +63,8 @@ export async function GET(request: Request) {
 
 export async function POST(request: Request) {
   try {
+    const identity = await getVoterIdentity(request);
+    if (!identity) return Response.json({ error: "Confirme o código enviado ao seu e-mail para participar." }, { status: 401 });
     const payload = await request.json() as {
       action?: string; sessionId?: string; city?: string; latitude?: number;
       longitude?: number; date?: string; voterId?: string; name?: string; email?: string; avatar?: string;
@@ -96,25 +99,22 @@ export async function POST(request: Request) {
       return Response.json({ ok: true });
     }
 
-    if (typeof payload.voterId !== "string" || !/^[a-zA-Z0-9-]{8,80}$/.test(payload.voterId)) {
-      return Response.json({ error: "Atualize a página para iniciar sua participação." }, { status: 400 });
-    }
+    const voterId = identity.voterId;
 
     if (payload.action === "vote") {
-      const email = (payload.email || "").trim().toLowerCase().slice(0, 254);
+      const email = identity.email;
       const avatar = payload.avatar || "";
-      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return Response.json({ error: "Digite um e-mail válido." }, { status: 400 });
       if (!AVATARS[avatar]) return Response.json({ error: "Escolha seu personagem." }, { status: 400 });
       const name = AVATARS[avatar];
       const chosen = await db.prepare("SELECT id FROM session_films WHERE session_id = ? AND id = ?").bind(id,payload.filmId||"").first();
       if (!chosen) return Response.json({ error: "Escolha um dos filmes em cartaz." }, { status: 400 });
       const session = await db.prepare("SELECT selected_date AS selectedDate FROM sessions WHERE id = ?").bind(id).first<{ selectedDate: string | null }>();
       if (!session?.selectedDate) return Response.json({ error: "A data da sessão ainda não foi escolhida." }, { status: 409 });
-      const claimed = await db.prepare("SELECT voter_id AS voterId FROM votes WHERE session_id = ? AND (email = ? OR avatar = ?) AND voter_id != ? LIMIT 1").bind(id,email,avatar,payload.voterId).first();
+      const claimed = await db.prepare("SELECT voter_id AS voterId FROM votes WHERE session_id = ? AND (email = ? OR avatar = ?) AND voter_id != ? LIMIT 1").bind(id,email,avatar,voterId).first();
       if (claimed) return Response.json({ error: "Este e-mail ou personagem já votou nesta sessão." }, { status: 409 });
       await db.prepare(
         "INSERT INTO votes (session_id, voter_id, name, email, avatar, film_id) SELECT ?, ?, ?, ?, ?, ? WHERE (SELECT COUNT(*) FROM votes WHERE session_id = ?) < 3 ON CONFLICT(session_id, voter_id) DO UPDATE SET name = excluded.name, email = excluded.email, avatar = excluded.avatar, film_id = excluded.film_id WHERE (SELECT COUNT(*) FROM votes WHERE session_id = ?) < 3",
-      ).bind(id, payload.voterId, name, email, avatar, payload.filmId, id, id).run();
+      ).bind(id, voterId, name, email, avatar, payload.filmId, id, id).run();
       const total = await db.prepare("SELECT COUNT(*) AS total FROM votes WHERE session_id = ?").bind(id).first<{ total: number }>();
       return Response.json({ ok: true, totalVotes: total?.total ?? 0, finished: (total?.total ?? 0) >= 3 });
     }
@@ -122,7 +122,7 @@ export async function POST(request: Request) {
     if (payload.action === "ticket") {
       if (!payload.ticketId || !TICKETS.has(payload.ticketId)) return Response.json({ error: "Escolha um ingresso." }, { status: 400 });
       await db.prepare("UPDATE votes SET ticket_id = ? WHERE session_id = ? AND voter_id = ?")
-        .bind(payload.ticketId, id, payload.voterId).run();
+        .bind(payload.ticketId, id, voterId).run();
       return Response.json({ ok: true });
     }
 

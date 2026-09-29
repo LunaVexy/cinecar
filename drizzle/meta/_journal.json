@@ -36,6 +36,13 @@
       "when": 1790625864952,
       "tag": "0004_superb_forge",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "6",
+      "when": 1790686568228,
+      "tag": "0005_exotic_spirit",
+      "breakpoints": true
     }
   ]
 }
